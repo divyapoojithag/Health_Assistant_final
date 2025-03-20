@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, session
-from flask_cors import CORS, cross_origin
+from flask_cors import CORS
 from database import db, init_db, UserAdminDetails, HealthData, Feedback
 from sqlalchemy.exc import SQLAlchemyError
 import os
@@ -18,17 +18,23 @@ app = Flask(__name__)
 
 # Configure app
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'healthassistant')
-app.config['SESSION_COOKIE_SECURE'] = False  # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_DOMAIN'] = None
 
-# Configure CORS to allow credentials
+# Configure CORS
 CORS(app, 
-     supports_credentials=True, 
-     origins=['http://localhost:3000'],
-     allow_headers=['Content-Type'],
-     expose_headers=['Access-Control-Allow-Origin'],
-     methods=['GET', 'POST', 'OPTIONS'])
+    resources={
+        r"/health_assistant/*": {  # Specific to health_assistant routes
+            "origins": ["http://localhost:3000"],
+            "methods": ["GET", "POST", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Accept"],
+            "supports_credentials": True,
+            "expose_headers": ["Access-Control-Allow-Origin"],
+            "max_age": 3600
+        }
+    })
 
 # Initialize database
 try:
@@ -36,6 +42,20 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize database: {str(e)}")
     raise
+
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"message": "Server is running"}), 200
+
+@app.route("/health_assistant/ping", methods=["GET", "OPTIONS"])
+def ping():
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+    return jsonify({"message": "pong"}), 200
 
 @app.route("/health_assistant/test", methods=["GET"])
 def test_connection():
@@ -56,11 +76,15 @@ def test_connection():
         }), 500
 
 @app.route("/health_assistant/validate", methods=["POST", "OPTIONS"])
-@cross_origin(supports_credentials=True)
 def validate_user():
     """Handle user login"""
     if request.method == "OPTIONS":
-        return "", 200
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
         
     try:
         data = request.get_json()
@@ -71,7 +95,7 @@ def validate_user():
             logger.error("No JSON data received")
             return jsonify({"success": False, "message": "No data received"}), 400
 
-        username = data.get("username")  # Frontend sends 'username'
+        username = data.get("username")
         password = data.get("password")
         
         logger.info(f"Login attempt for username: {username}")
@@ -82,9 +106,9 @@ def validate_user():
 
         # Query using name field that matches the username
         user = UserAdminDetails.query.filter_by(name=username).first()
-        logger.info(f"Found user: {user}")
+        logger.info(f"Found user object: {user}")
         
-        if user and user.password == password:  # In production, use proper password hashing
+        if user and user.password == password:
             # Get user's health data
             health_data = HealthData.query.get(user.id)
             logger.info(f"Health data found: {health_data}")
@@ -94,14 +118,14 @@ def validate_user():
             
             # Set session data
             session["user_id"] = user.id
-            session["username"] = user.name  # Use user.name consistently
+            session["username"] = user.name
             session["user_type"] = user.user_type
             
             response_data = {
                 "success": True,
                 "user": {
                     "id": user.id,
-                    "name": user.name,  # Frontend expects 'name'
+                    "name": user.name,
                     "user_type": user.user_type
                 },
                 "message": "Login successful"
@@ -115,7 +139,6 @@ def validate_user():
             logger.info(f"Response data: {response_data}")
             
             response = jsonify(response_data)
-            response.headers.add('Access-Control-Allow-Credentials', 'true')
             return response, 200
         else:
             logger.warning(f"Login failed for user: {username}")
@@ -124,14 +147,6 @@ def validate_user():
                 "message": "Invalid username or password"
             }), 401
                     
-    except SQLAlchemyError as e:
-        logger.error(f"Database error during login: {str(e)}")
-        logger.error(traceback.format_exc())
-        return jsonify({
-            "success": False,
-            "message": "Database error occurred while validating credentials"
-        }), 500
-            
     except Exception as e:
         logger.error(f"Error in validate_user: {str(e)}")
         logger.error(traceback.format_exc())
