@@ -33,8 +33,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    // Clear the auth state
     setIsAuthenticated(false);
     setUserProfile(null);
+    // Only redirect to feedback if we're not already on the feedback page
+    if (!window.location.pathname.includes('/feedback')) {
+      window.location.href = '/feedback';
+    }
   };
 
   const isAdmin = () => {

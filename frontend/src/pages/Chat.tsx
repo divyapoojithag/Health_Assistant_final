@@ -59,8 +59,9 @@ const Chat: React.FC = () => {
   };
 
   const handleLogout = () => {
-    logout();
+    //logout();
     navigate('/feedback');
+    logout();
   };
 
   const scrollToBottom = () => {

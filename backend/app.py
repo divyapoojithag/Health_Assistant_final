@@ -298,13 +298,17 @@ def submit_feedback():
         db.session.commit()
         
         # Clear session after successful feedback submission
-        session.clear()
+        # session.clear()
         
         logger.info(f"Feedback submitted successfully for user: {username}")
-        return jsonify({
+        response = jsonify({
             "success": True,
             "message": "Feedback submitted successfully"
-        }), 200
+        })
+    
+        # Clear session only after sending response
+        response.set_cookie("session", "", expires=0)  # Properly clears session
+        return response, 200
             
     except Exception as e:
         logger.error(f"Error in submit_feedback: {str(e)}")

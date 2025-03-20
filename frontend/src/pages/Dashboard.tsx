@@ -20,17 +20,13 @@ const Dashboard: React.FC = () => {
   const [selectedVectorDB, setSelectedVectorDB] = useState<string>('');
 
   const llmOptions: ConfigOption[] = [
-    { id: 'gpt4', name: 'GPT-4' },
     { id: 'gpt35', name: 'GPT-3.5' },
-    { id: 'claude', name: 'Claude' },
-    { id: 'llama', name: 'LLaMA 2' }
+    { id: 'perplexity', name: 'Perplexity' },
   ];
 
   const vectorDBOptions: ConfigOption[] = [
     { id: 'pinecone', name: 'Pinecone' },
     { id: 'weaviate', name: 'Weaviate' },
-    { id: 'chroma', name: 'ChromaDB' },
-    { id: 'milvus', name: 'Milvus' }
   ];
 
   useEffect(() => {
