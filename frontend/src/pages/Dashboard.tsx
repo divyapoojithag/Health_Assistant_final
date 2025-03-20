@@ -63,9 +63,17 @@ const Dashboard: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-            <p className="text-gray-600">Configure AI model and vector database settings</p>
+          <div className="mb-8 flex justify-between items-center">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
+              <p className="text-gray-600">Configure AI model and vector database settings</p>
+            </div>
+            <button
+              onClick={() => navigate('/chat')}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition-colors duration-200"
+            >
+              Go to Chat Interface
+            </button>
           </div>
 
           <div className="space-y-8">

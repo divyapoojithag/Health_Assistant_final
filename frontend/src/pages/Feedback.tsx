@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
@@ -20,6 +20,12 @@ const Feedback: React.FC = () => {
     satisfied: true
   });
 
+  useEffect(() => {
+    if (!userProfile?.username) {
+      navigate('/login');
+    }
+  }, [userProfile, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -33,19 +39,21 @@ const Feedback: React.FC = () => {
       const response = await axios.post('http://localhost:8080/health_assistant/feedback', {
         ...feedback,
         username: userProfile.username
+      }, {
+        withCredentials: true
       });
 
       console.log('Feedback submission response:', response.data);
       
-      if (response.data.message === 'Feedback submitted successfully') {
+      if (response.data.success) {
         logout();
         navigate('/login');
       } else {
-        setError('Unexpected response from server');
+        setError(response.data.message || 'Unexpected response from server');
       }
     } catch (error: any) {
       console.error('Error submitting feedback:', error);
-      setError(error.response?.data?.error || error.message || 'Failed to submit feedback');
+      setError(error.response?.data?.message || error.message || 'Failed to submit feedback');
     } finally {
       setIsSubmitting(false);
     }

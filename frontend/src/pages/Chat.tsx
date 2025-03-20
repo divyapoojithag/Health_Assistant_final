@@ -38,10 +38,21 @@ const Chat: React.FC = () => {
 
   const fetchSmartQuestions = async () => {
     try {
-      const response = await axios.post('http://localhost:8080/health_assistant/smart-questions', {
-        username: userProfile?.username
-      });
-      setSmartQuestions(response.data.questions);
+      const response = await axios.post('http://localhost:8080/health_assistant/smart-questions', 
+        { username: userProfile?.username },
+        {
+          withCredentials: true,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+      if (response.data.success) {
+        setSmartQuestions(response.data.questions);
+      } else {
+        console.error('Failed to fetch smart questions:', response.data.message);
+      }
     } catch (error) {
       console.error('Error fetching smart questions:', error);
     }
@@ -75,23 +86,24 @@ const Chat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const formData = new FormData();
-      formData.append('msg', messageContent);
-
       const response = await axios.post(
-        'http://localhost:8080/health_assistant/get',
-        formData,
+        'http://localhost:8080/health_assistant/chat',
+        { 
+          message: messageContent,
+          username: userProfile?.username 
+        },
         {
           headers: {
-            'Content-Type': 'multipart/form-data',
+            'Content-Type': 'application/json'
           },
+          withCredentials: true
         }
       );
 
       const assistantMessage: Message = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: response.data.response,
+        content: response.data.response || response.data.message,
         timestamp: new Date(),
       };
 
