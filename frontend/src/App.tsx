@@ -8,8 +8,8 @@ import { AuthProvider } from './context/AuthContext';
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
+    <BrowserRouter>
+      <AuthProvider>
         <div className="min-h-screen bg-background">
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -19,8 +19,8 @@ function App() {
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </div>
-      </BrowserRouter>
-    </AuthProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

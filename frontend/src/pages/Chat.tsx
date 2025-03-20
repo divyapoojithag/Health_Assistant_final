@@ -58,10 +58,20 @@ const Chat: React.FC = () => {
     }
   };
 
-  const handleLogout = () => {
-    //logout();
-    navigate('/feedback');
-    logout();
+  /*const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };*/
+
+  const handleLogout = async () => {
+    try {
+      navigate('/feedback'); // Redirect to Feedback Page instead of logging out
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
 
   const scrollToBottom = () => {

@@ -11,6 +11,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAI, ChatOpenAI
 import pinecone
 from pinecone import Pinecone
+from flask_session import Session
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -21,6 +22,21 @@ logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
+
+# Configure Flask session
+app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'healthassistant')
+app.config['SESSION_TYPE'] = 'filesystem'
+Session(app)
+
+# Configure CORS
+CORS(app, supports_credentials=True, resources={
+    r"/health_assistant/*": {
+        "origins": ["http://localhost:3000"],
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"],
+        "supports_credentials": True
+    }
+})
 
 # Initialize API keys and configurations
 PINECONE_API_KEY = os.environ.get('PINECONE_API_KEY')
@@ -68,26 +84,6 @@ except Exception as e:
     logger.error(f"Error initializing ChatOpenAI: {str(e)}")
     logger.error(traceback.format_exc())
     raise
-
-# Configure app
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'healthassistant')
-app.config['SESSION_COOKIE_SECURE'] = False
-app.config['SESSION_COOKIE_HTTPONLY'] = True
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'
-app.config['SESSION_COOKIE_DOMAIN'] = None
-
-# Configure CORS
-CORS(app, 
-    resources={
-        r"/health_assistant/*": {  # Specific to health_assistant routes
-            "origins": ["http://localhost:3000"],
-            "methods": ["GET", "POST", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Accept"],
-            "supports_credentials": True,
-            "expose_headers": ["Access-Control-Allow-Origin"],
-            "max_age": 3600
-        }
-    })
 
 # Initialize database
 try:
@@ -245,7 +241,7 @@ def debug_db():
 def submit_feedback():
     """Handle feedback submission"""
     if request.method == "OPTIONS":
-        response = jsonify({})
+        response = jsonify({"success": True})
         response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
         response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
@@ -253,11 +249,6 @@ def submit_feedback():
         return response, 200
         
     try:
-        # Check if user is authenticated via session
-        if not session.get('user_id'):
-            logger.error("User not authenticated")
-            return jsonify({"success": False, "message": "User not authenticated"}), 401
-
         data = request.get_json()
         logger.info("Feedback submission received")
         logger.info(f"Request data: {data}")
@@ -266,52 +257,100 @@ def submit_feedback():
             logger.error("No JSON data received")
             return jsonify({"success": False, "message": "No data received"}), 400
 
-        username = data.get("username")
         rating = data.get("rating")
-        comment = data.get("comment")
-        satisfied = data.get("satisfied")
+        comment = data.get("comment", "")
+        satisfied = data.get("satisfied", True)
         
-        if not username or not rating:
+        if not rating:
             logger.error("Missing required feedback fields")
-            return jsonify({"success": False, "message": "Username and rating are required"}), 400
+            return jsonify({"success": False, "message": "Rating is required"}), 400
 
-        # Verify that the username matches the session user
-        if username != session.get('username'):
-            logger.error("Username mismatch with session")
-            return jsonify({"success": False, "message": "Invalid user"}), 403
-
-        # Get user by username
-        user = UserAdminDetails.query.filter_by(name=username).first()
+        # Check if user is authenticated via session
+        ''' user_id = session.get('user_id')
+        if not user_id:
+            logger.error("User not authenticated")
+            return jsonify({"success": False, "message": "User not authenticated"}), 401'''
+        
+        user_id = session.get('user_id')
+        
+        if not user_id:
+            return jsonify({"success": False, "message": "User not authenticated"}), 401
+        
+        # Get user from session
+        user = UserAdminDetails.query.get(user_id)
         if not user:
-            logger.error(f"User not found: {username}")
+            logger.error(f"User not found: {user_id}")
             return jsonify({"success": False, "message": "User not found"}), 404
 
         # Create new feedback entry
-        feedback = Feedback(
-            user_id=user.id,
+        '''feedback = Feedback(
+            user_id=user_id,
             rating=rating,
             comment=comment,
             satisfied=satisfied
-        )
+        )'''
+        
+        feedback = Feedback(
+    user_id=user_id, 
+    rating=data.get("rating"),
+    comment=data.get("comment", ""),
+    satisfied=data.get("satisfied", True),
+    given_on=func.now()  # Ensure timestamp is added
+)
         
         db.session.add(feedback)
         db.session.commit()
         
-        # Clear session after successful feedback submission
-        # session.clear()
+        logger.info(f"Feedback submitted successfully for user: {user.name}")
         
-        logger.info(f"Feedback submitted successfully for user: {username}")
+        # Clear the session after successful feedback submission
+        session.clear()
+        
         response = jsonify({
             "success": True,
-            "message": "Feedback submitted successfully"
+            "message": "Feedback submitted successfully",
+            "redirect": "/login"  # Tell frontend to redirect to login
         })
-    
-        # Clear session only after sending response
-        response.set_cookie("session", "", expires=0)  # Properly clears session
+        
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 200
             
     except Exception as e:
         logger.error(f"Error in submit_feedback: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": "An error occurred while processing your request"
+        }), 500
+
+@app.route("/health_assistant/skip-feedback", methods=["POST", "OPTIONS"])
+def skip_feedback():
+    """Handle feedback skip"""
+    if request.method == "OPTIONS":
+        response = jsonify({"success": True})
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+
+    try:
+        # Clear the session
+        session.clear()
+        
+        response = jsonify({
+            "success": True,
+            "message": "Logged out successfully",
+            "redirect": "/login"
+        })
+        
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+        
+    except Exception as e:
+        logger.error(f"Error in skip_feedback: {str(e)}")
         logger.error(traceback.format_exc())
         return jsonify({
             "success": False,
@@ -504,6 +543,33 @@ def get_smart_questions():
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 500
+
+@app.route("/health_assistant/logout", methods=["POST", "OPTIONS"])
+def logout():
+    """Handle user logout"""
+    if request.method == "OPTIONS":
+        response = jsonify({"success": True})
+        response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+
+    try:
+        # Don't clear session yet, just send success response
+        # Session will be cleared after feedback submission
+        return jsonify({
+            "success": True,
+            "message": "Logged out successfully"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in logout: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": "An error occurred during logout"
+        }), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080, debug=True)
