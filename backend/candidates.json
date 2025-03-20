@@ -1,0 +1,56 @@
+{
+  "candidates": [
+    {
+      "username": "john_doe",
+      "password": "securePass123",
+      "age": 32,
+      "gender": "Male",
+      "weight": "75 kg",
+      "height": "180 cm",
+      "health_condition": "Hypertension",
+      "allergies": ["Peanuts", "Penicillin"],
+      "surgical_history": ["Appendectomy"],
+      "medicine_prescribed": [{"name": "Amlodipine", "dosage": "5 mg daily"}],
+      "blood_group": "O+"
+    },
+    {
+      "username": "jane_smith",
+      "password": "passWord456",
+      "age": 28,
+      "gender": "Female",
+      "weight": "60 kg",
+      "height": "165 cm",
+      "health_condition": "Diabetes",
+      "allergies": ["None"],
+      "surgical_history": ["None"],
+      "medicine_prescribed": [{"name": "Metformin", "dosage": "500 mg twice daily"}],
+      "blood_group": "A-"
+    },
+    {
+      "username": "mike_jordan",
+      "password": "MikeSecure99",
+      "age": 45,
+      "gender": "Male",
+      "weight": "85 kg",
+      "height": "175 cm",
+      "health_condition": "Asthma",
+      "allergies": ["Dust", "Pollen"],
+      "surgical_history": ["Knee Surgery"],
+      "medicine_prescribed": [{"name": "Albuterol", "dosage": "90 mcg as needed"}],
+      "blood_group": "B+"
+    },
+    {
+      "username": "emma_watson",
+      "password": "EmmaSafe789",
+      "age": 35,
+      "gender": "Female",
+      "weight": "68 kg",
+      "height": "170 cm",
+      "health_condition": "None",
+      "allergies": ["Shellfish"],
+      "surgical_history": ["C-Section"],
+      "medicine_prescribed": [{"name": "None", "dosage": "None"}],
+      "blood_group": "AB+"
+    }
+  ]
+}
