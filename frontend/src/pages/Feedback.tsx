@@ -37,12 +37,11 @@ const Feedback: React.FC = () => {
         throw new Error('User not authenticated');
       }
 
-      // Send only feedback data, let backend handle user identification via session
       const response = await axios.post(
         'http://localhost:8080/health_assistant/feedback',
         {
           rating: feedback.rating,
-          comment: feedback.comment,
+          comment: feedback.comment.trim(),
           satisfied: feedback.satisfied
         },
         {
@@ -51,12 +50,9 @@ const Feedback: React.FC = () => {
         }
       );
 
-      console.log('Feedback submission response:', response.data);
-      
       if (response.data.success) {
-        // Clear local auth state and redirect
-        logout();
-        navigate('/login');
+        // First handle the successful submission
+        await handleLogout();
       } else {
         setError(response.data.message || 'Failed to submit feedback');
       }
@@ -65,7 +61,7 @@ const Feedback: React.FC = () => {
       setError(
         error.response?.data?.message || 
         error.message || 
-        'Failed to submit feedback'
+        'Failed to submit feedback. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -85,8 +81,7 @@ const Feedback: React.FC = () => {
       );
 
       if (response.data.success) {
-        logout();
-        navigate('/login');
+        await handleLogout();
       } else {
         setError(response.data.message || 'Failed to skip feedback');
       }
@@ -95,10 +90,30 @@ const Feedback: React.FC = () => {
       setError(
         error.response?.data?.message || 
         error.message || 
-        'Failed to skip feedback'
+        'Failed to skip feedback. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Call logout endpoint
+      await axios.post(
+        'http://localhost:8080/health_assistant/logout',
+        {},
+        {
+          withCredentials: true,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    } catch (error) {
+      console.error('Error during logout:', error);
+    } finally {
+      // Always clear local auth state and redirect
+      logout();
+      navigate('/login');
     }
   };
 
@@ -167,6 +182,7 @@ const Feedback: React.FC = () => {
                       ? 'bg-teal-500 text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}
+                  disabled={isSubmitting}
                 >
                   {value}
                 </button>
@@ -185,7 +201,8 @@ const Feedback: React.FC = () => {
               rows={4}
               value={feedback.comment}
               onChange={handleInputChange}
-              className="mt-1 block w-full rounded-lg border border-gray-300 shadow-sm py-3 px-4 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm transition duration-150 ease-in-out"
+              disabled={isSubmitting}
+              className="mt-1 block w-full rounded-lg border border-gray-300 shadow-sm py-3 px-4 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 sm:text-sm transition duration-150 ease-in-out disabled:bg-gray-100 disabled:cursor-not-allowed"
               placeholder="Your feedback helps us serve you better..."
             />
           </div>
@@ -198,19 +215,20 @@ const Feedback: React.FC = () => {
               name="satisfied"
               checked={feedback.satisfied}
               onChange={handleInputChange}
-              className="h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 transition duration-150 ease-in-out"
+              disabled={isSubmitting}
+              className="h-5 w-5 rounded border-gray-300 text-teal-600 focus:ring-teal-500 transition duration-150 ease-in-out disabled:cursor-not-allowed"
             />
-            <label htmlFor="satisfied" className="text-sm font-medium text-gray-700">
-              Overall, I am satisfied with the service
+            <label htmlFor="satisfied" className="text-sm text-gray-700">
+              I am satisfied with the assistance provided
             </label>
           </div>
 
-          {/* Buttons */}
-          <div className="flex space-x-4 pt-4">
+          {/* Submit and Skip Buttons */}
+          <div className="flex space-x-4">
             <button
               type="submit"
               disabled={isSubmitting}
-              className="flex-1 rounded-lg bg-teal-600 py-3 px-4 text-sm font-semibold text-white shadow-sm hover:bg-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2 disabled:opacity-50 transition duration-150 ease-in-out"
+              className="flex-1 bg-teal-600 text-white py-3 px-6 rounded-lg font-medium hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 transition duration-150 ease-in-out disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
             </button>
@@ -218,9 +236,9 @@ const Feedback: React.FC = () => {
               type="button"
               onClick={handleSkip}
               disabled={isSubmitting}
-              className="flex-1 rounded-lg bg-gray-100 py-3 px-4 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 disabled:opacity-50 transition duration-150 ease-in-out"
+              className="flex-1 bg-gray-200 text-gray-700 py-3 px-6 rounded-lg font-medium hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition duration-150 ease-in-out disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
-              Skip Feedback
+              {isSubmitting ? 'Processing...' : 'Skip'}
             </button>
           </div>
         </form>

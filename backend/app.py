@@ -13,6 +13,7 @@ from langchain_openai import OpenAI, ChatOpenAI
 import pinecone
 from pinecone import Pinecone
 from flask_session import Session
+from datetime import datetime
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -248,68 +249,90 @@ def submit_feedback():
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 200
-        
+
+    logger.info("Starting feedback submission process")
     try:
         data = request.get_json()
-        logger.info("Feedback submission received")
-        logger.info(f"Request data: {data}")
+        logger.info(f"Received feedback data: {data}")
+        logger.info(f"Current session: {dict(session)}")
         
         if not data:
             logger.error("No JSON data received")
             return jsonify({"success": False, "message": "No data received"}), 400
 
-        # Validate required fields
-        rating = data.get("rating")
-        if not rating:
-            logger.error("Missing required feedback fields")
-            return jsonify({"success": False, "message": "Rating is required"}), 400
+        # Validate and convert rating to integer
+        try:
+            rating = int(data.get("rating"))
+            if not 1 <= rating <= 5:
+                raise ValueError("Rating must be between 1 and 5")
+        except (TypeError, ValueError) as e:
+            logger.error(f"Invalid rating value: {data.get('rating')}")
+            return jsonify({"success": False, "message": "Rating must be a number between 1 and 5"}), 400
 
-        # Get user from session for security
+        # Get user from session with detailed logging
         user_id = session.get('user_id')
+        logger.info(f"User ID from session: {user_id}")
+        
         if not user_id:
-            logger.error("User not authenticated")
+            logger.error("No user_id in session")
             return jsonify({"success": False, "message": "User not authenticated"}), 401
 
-        # Verify user exists
+        # Verify user exists with detailed logging
         user = UserAdminDetails.query.get(user_id)
         if not user:
-            logger.error(f"User not found: {user_id}")
+            logger.error(f"User not found in database: {user_id}")
             return jsonify({"success": False, "message": "User not found"}), 404
 
-        # Create feedback with proper SQLAlchemy timestamp
-        feedback = Feedback(
-            user_id=user_id,
-            rating=rating,
-            comment=data.get("comment", ""),
-            satisfied=data.get("satisfied", True),
-            given_on=func.now()
-        )
-        
-        db.session.add(feedback)
-        db.session.commit()
-        
-        logger.info(f"Feedback submitted successfully for user: {user.name}")
-        
-        # Clear session after successful feedback
-        session.clear()
-        
+        logger.info(f"Found user: {user.name} (ID: {user.id})")
+
+        try:
+            # Create feedback with proper data validation
+            feedback = Feedback(
+                user_id=user_id,
+                rating=rating,
+                comment=str(data.get("comment", "")).strip(),
+                satisfied=bool(data.get("satisfied", True)),
+                given_on=datetime.now()
+            )
+            
+            logger.info(f"Created feedback object: {feedback}")
+            db.session.add(feedback)
+            db.session.commit()
+            logger.info(f"Feedback saved successfully with ID: {feedback.id}")
+            
+        except SQLAlchemyError as db_error:
+            db.session.rollback()
+            error_msg = str(db_error)
+            logger.error(f"Database error while saving feedback: {error_msg}")
+            logger.error(traceback.format_exc())
+            return jsonify({
+                "success": False,
+                "message": "Database error occurred while saving feedback",
+                "details": error_msg
+            }), 500
+
         response = jsonify({
             "success": True,
             "message": "Feedback submitted successfully",
-            "redirect": "/login"
+            "feedback_id": feedback.id
         })
         
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
-        return response, 200
-            
+        return response
+
     except Exception as e:
-        logger.error(f"Error in submit_feedback: {str(e)}")
+        logger.error(f"Unexpected error in submit_feedback: {str(e)}")
         logger.error(traceback.format_exc())
-        db.session.rollback()
+        # Ensure rollback happens even for non-database errors
+        try:
+            db.session.rollback()
+        except:
+            pass
         return jsonify({
             "success": False,
-            "message": "An error occurred while processing your request"
+            "message": "An unexpected error occurred while processing your request",
+            "details": str(e)
         }), 500
 
 @app.route("/health_assistant/skip-feedback", methods=["POST", "OPTIONS"])
