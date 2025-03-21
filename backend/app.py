@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, session
 from flask_cors import CORS
 from database import db, init_db, UserAdminDetails, HealthData, Feedback
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import func, text
 import os
 import logging
 import traceback
@@ -257,59 +258,45 @@ def submit_feedback():
             logger.error("No JSON data received")
             return jsonify({"success": False, "message": "No data received"}), 400
 
+        # Validate required fields
         rating = data.get("rating")
-        comment = data.get("comment", "")
-        satisfied = data.get("satisfied", True)
-        
         if not rating:
             logger.error("Missing required feedback fields")
             return jsonify({"success": False, "message": "Rating is required"}), 400
 
-        # Check if user is authenticated via session
-        ''' user_id = session.get('user_id')
+        # Get user from session for security
+        user_id = session.get('user_id')
         if not user_id:
             logger.error("User not authenticated")
-            return jsonify({"success": False, "message": "User not authenticated"}), 401'''
-        
-        user_id = session.get('user_id')
-        
-        if not user_id:
             return jsonify({"success": False, "message": "User not authenticated"}), 401
-        
-        # Get user from session
+
+        # Verify user exists
         user = UserAdminDetails.query.get(user_id)
         if not user:
             logger.error(f"User not found: {user_id}")
             return jsonify({"success": False, "message": "User not found"}), 404
 
-        # Create new feedback entry
-        '''feedback = Feedback(
+        # Create feedback with proper SQLAlchemy timestamp
+        feedback = Feedback(
             user_id=user_id,
             rating=rating,
-            comment=comment,
-            satisfied=satisfied
-        )'''
-        
-        feedback = Feedback(
-    user_id=user_id, 
-    rating=data.get("rating"),
-    comment=data.get("comment", ""),
-    satisfied=data.get("satisfied", True),
-    given_on=func.now()  # Ensure timestamp is added
-)
+            comment=data.get("comment", ""),
+            satisfied=data.get("satisfied", True),
+            given_on=func.now()
+        )
         
         db.session.add(feedback)
         db.session.commit()
         
         logger.info(f"Feedback submitted successfully for user: {user.name}")
         
-        # Clear the session after successful feedback submission
+        # Clear session after successful feedback
         session.clear()
         
         response = jsonify({
             "success": True,
             "message": "Feedback submitted successfully",
-            "redirect": "/login"  # Tell frontend to redirect to login
+            "redirect": "/login"
         })
         
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
@@ -319,6 +306,7 @@ def submit_feedback():
     except Exception as e:
         logger.error(f"Error in submit_feedback: {str(e)}")
         logger.error(traceback.format_exc())
+        db.session.rollback()
         return jsonify({
             "success": False,
             "message": "An error occurred while processing your request"
@@ -336,19 +324,25 @@ def skip_feedback():
         return response, 200
 
     try:
-        # Clear the session
+        # Get user from session
+        user_id = session.get('user_id')
+        if not user_id:
+            logger.error("User not authenticated")
+            return jsonify({"success": False, "message": "User not authenticated"}), 401
+
+        # Clear session since user is skipping feedback
         session.clear()
         
         response = jsonify({
             "success": True,
-            "message": "Logged out successfully",
+            "message": "Feedback skipped",
             "redirect": "/login"
         })
         
         response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
         response.headers.add('Access-Control-Allow-Credentials', 'true')
         return response, 200
-        
+
     except Exception as e:
         logger.error(f"Error in skip_feedback: {str(e)}")
         logger.error(traceback.format_exc())
@@ -569,6 +563,147 @@ def logout():
         return jsonify({
             "success": False,
             "message": "An error occurred during logout"
+        }), 500
+
+@app.route("/health_assistant/feedback-analytics", methods=["GET", "OPTIONS"])
+def get_feedback_analytics():
+    """Get aggregated feedback analytics"""
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+
+    try:
+        # Check if user is admin
+        if not session.get('user_type') == 'admin':
+            return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+        # Get date range from query parameters
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+
+        # Base query
+        query = db.session.query(Feedback)
+
+        # Apply date filters if provided
+        if start_date:
+            query = query.filter(Feedback.given_on >= start_date)
+        if end_date:
+            query = query.filter(Feedback.given_on <= end_date)
+
+        # Get all feedback entries
+        feedbacks = query.all()
+
+        # Return empty data if no feedbacks
+        if not feedbacks:
+            return jsonify({
+                "success": True,
+                "data": {
+                    "total_feedback": 0,
+                    "average_rating": 0,
+                    "satisfaction_rate": 0,
+                    "rating_distribution": {i: 0 for i in range(1, 6)},
+                    "daily_trends": []
+                }
+            })
+
+        # Calculate analytics
+        total_feedback = len(feedbacks)
+        avg_rating = sum(f.rating for f in feedbacks) / total_feedback
+        satisfaction_rate = sum(1 for f in feedbacks if f.satisfied) / total_feedback
+
+        # Rating distribution
+        rating_dist = {}
+        for i in range(1, 6):
+            rating_dist[i] = sum(1 for f in feedbacks if f.rating == i)
+
+        # Time-based trend (last 7 days)
+        seven_days_ago = text("DATE_SUB(CURDATE(), INTERVAL 7 DAY)")
+        daily_trends = db.session.query(
+            func.date(Feedback.given_on).label('date'),
+            func.count(Feedback.id).label('count'),
+            func.avg(Feedback.rating).label('avg_rating')
+        ).filter(
+            Feedback.given_on >= seven_days_ago
+        ).group_by(
+            func.date(Feedback.given_on)
+        ).all()
+
+        trend_data = [{
+            'date': str(trend.date),
+            'count': int(trend.count),
+            'avg_rating': float(trend.avg_rating) if trend.avg_rating else 0
+        } for trend in daily_trends]
+
+        response = jsonify({
+            "success": True,
+            "data": {
+                "total_feedback": total_feedback,
+                "average_rating": round(avg_rating, 2),
+                "satisfaction_rate": round(satisfaction_rate * 100, 2),
+                "rating_distribution": rating_dist,
+                "daily_trends": trend_data
+            }
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting feedback analytics: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": "An error occurred while fetching analytics"
+        }), 500
+
+@app.route("/health_assistant/feedback-details", methods=["GET", "OPTIONS"])
+def get_feedback_details():
+    """Get detailed feedback entries with user information"""
+    if request.method == "OPTIONS":
+        response = jsonify({})
+        response.headers.add('Access-Control-Allow-Methods', 'GET, OPTIONS')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response, 200
+
+    try:
+        # Check if user is admin
+        if not session.get('user_type') == 'admin':
+            return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+        # Join Feedback with UserAdminDetails to get usernames
+        feedbacks = db.session.query(
+            Feedback, UserAdminDetails.name
+        ).join(
+            UserAdminDetails, Feedback.user_id == UserAdminDetails.id
+        ).order_by(
+            Feedback.given_on.desc()
+        ).all()
+
+        feedback_list = [{
+            **feedback.to_dict(),
+            'username': username
+        } for feedback, username in feedbacks]
+
+        response = jsonify({
+            "success": True,
+            "data": feedback_list
+        })
+        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+        response.headers.add('Access-Control-Allow-Credentials', 'true')
+        return response
+
+    except Exception as e:
+        logger.error(f"Error getting feedback details: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "message": "An error occurred while fetching feedback details"
         }), 500
 
 if __name__ == "__main__":

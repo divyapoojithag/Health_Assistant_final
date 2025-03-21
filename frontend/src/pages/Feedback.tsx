@@ -22,7 +22,7 @@ const Feedback: React.FC = () => {
 
   useEffect(() => {
     // Redirect to login if no user is logged in
-    if (!userProfile?.username) {
+    if (!userProfile?.id) {
       navigate('/login');
     }
   }, [userProfile, navigate]);
@@ -33,42 +33,40 @@ const Feedback: React.FC = () => {
     setError('');
 
     try {
-      if (!userProfile?.id) {  // username changed to id 
+      if (!userProfile?.id) {
         throw new Error('User not authenticated');
       }
 
-      /*const response = await axios.post('http://localhost:8080/health_assistant/feedback', 
-        feedback,
+      // Send only feedback data, let backend handle user identification via session
+      const response = await axios.post(
+        'http://localhost:8080/health_assistant/feedback',
+        {
+          rating: feedback.rating,
+          comment: feedback.comment,
+          satisfied: feedback.satisfied
+        },
         {
           withCredentials: true,
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        }*/
-
-
-          const payload = { ...feedback, user_id: userProfile.id };
-          console.log("Submitting payload:", payload);
-        
-          const response = await axios.post('http://localhost:8080/health_assistant/feedback', 
-            payload,
-            {
-              withCredentials: true,
-              headers: { 'Content-Type': 'application/json' }
-            }        
+          headers: { 'Content-Type': 'application/json' }
+        }
       );
 
       console.log('Feedback submission response:', response.data);
       
       if (response.data.success) {
+        // Clear local auth state and redirect
         logout();
         navigate('/login');
       } else {
-        setError(response.data.message || 'Unexpected response from server');
+        setError(response.data.message || 'Failed to submit feedback');
       }
     } catch (error: any) {
       console.error('Error submitting feedback:', error);
-      setError(error.response?.data?.message || error.message || 'Failed to submit feedback');
+      setError(
+        error.response?.data?.message || 
+        error.message || 
+        'Failed to submit feedback'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -77,13 +75,12 @@ const Feedback: React.FC = () => {
   const handleSkip = async () => {
     setIsSubmitting(true);
     try {
-      const response = await axios.post('http://localhost:8080/health_assistant/skip-feedback', 
+      const response = await axios.post(
+        'http://localhost:8080/health_assistant/skip-feedback',
         {},
         {
           withCredentials: true,
-          headers: {
-            'Content-Type': 'application/json',
-          }
+          headers: { 'Content-Type': 'application/json' }
         }
       );
 
@@ -95,7 +92,11 @@ const Feedback: React.FC = () => {
       }
     } catch (error: any) {
       console.error('Error skipping feedback:', error);
-      setError(error.response?.data?.message || error.message || 'Failed to skip feedback');
+      setError(
+        error.response?.data?.message || 
+        error.message || 
+        'Failed to skip feedback'
+      );
     } finally {
       setIsSubmitting(false);
     }
