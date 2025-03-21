@@ -237,7 +237,7 @@ const Dashboard: React.FC = () => {
                     ? 'bg-gray-400 cursor-not-allowed' 
                     : 'bg-teal-600 hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500'}`}
               >
-                Save Configuration & Continue
+                Save Configuration
               </button>
             </div>
           </div>

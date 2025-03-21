@@ -109,11 +109,15 @@ def init_db(app):
         from sqlalchemy import create_engine
         temp_engine = create_engine(engine_url)
         
-        # Drop and recreate database
+        # Create database if it doesn't exist
         with temp_engine.connect() as conn:
-            conn.execute(text("DROP DATABASE IF EXISTS Medical_Bot"))
-            conn.execute(text("CREATE DATABASE Medical_Bot CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
-            logger.info(f"Recreated database {db_name}")
+            # Check if database exists
+            result = conn.execute(text(f"SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = '{db_name}'"))
+            if not result.fetchone():
+                conn.execute(text(f"CREATE DATABASE {db_name} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"))
+                logger.info(f"Created new database {db_name}")
+            else:
+                logger.info(f"Using existing database {db_name}")
         
         temp_engine.dispose()
 
@@ -125,54 +129,60 @@ def init_db(app):
         db.init_app(app)
         
         with app.app_context():
-            # Create all tables
+            # Create tables if they don't exist
             db.create_all()
-            logger.info("Created all database tables")
+            logger.info("Ensured all database tables exist")
             
-            # Create test user
-            test_user = UserAdminDetails(
-                name='john_doe',
-                user_type='user',
-                password='test123'
-            )
-            db.session.add(test_user)
-            db.session.commit()
-            logger.info(f"Created test user: {test_user.name}")
+            # Only create test users if they don't exist
+            if not UserAdminDetails.query.filter_by(name='john_doe').first():
+                test_user = UserAdminDetails(
+                    name='john_doe',
+                    user_type='user',
+                    password='test123'
+                )
+                db.session.add(test_user)
+                db.session.commit()
+                logger.info(f"Created test user: {test_user.name}")
 
-            # Add health data for test user
-            health_data = HealthData(
-                id=test_user.id,
-                age=35,
-                gender='Male',
-                health_condition='Hypertension',
-                ethnicity='Caucasian',
-                allergies='None',
-                height=175.0,
-                weight=75.0,
-                surgical_history='None',
-                current_medication='Lisinopril',
-                medicine_prescribed='None',
-                blood_group='O+'
-            )
-            db.session.add(health_data)
-            db.session.commit()
-            logger.info(f"Added health data for test user")
+                # Add health data for test user
+                health_data = HealthData(
+                    id=test_user.id,
+                    age=35,
+                    gender='Male',
+                    health_condition='Hypertension',
+                    ethnicity='Caucasian',
+                    allergies='None',
+                    height=175.0,
+                    weight=75.0,
+                    surgical_history='None',
+                    current_medication='Lisinopril',
+                    medicine_prescribed='None',
+                    blood_group='O+'
+                )
+                db.session.add(health_data)
+                db.session.commit()
+                logger.info(f"Added health data for test user")
 
-            # Create admin user
-            admin_user = UserAdminDetails(
-                name='admin',
-                user_type='admin',
-                password='admin123'
-            )
-            db.session.add(admin_user)
-            db.session.commit()
-            logger.info(f"Created admin user: {admin_user.name}")
+            if not UserAdminDetails.query.filter_by(name='admin').first():
+                admin_user = UserAdminDetails(
+                    name='admin',
+                    user_type='admin',
+                    password='admin123'
+                )
+                db.session.add(admin_user)
+                db.session.commit()
+                logger.info(f"Created admin user: {admin_user.name}")
 
-            # Log all users for verification
+            # Log database status
             users = UserAdminDetails.query.all()
-            logger.info("Current users in database:")
+            logger.info(f"Current users in database: {len(users)}")
             for user in users:
-                logger.info(f"User: {user.name} (type: {user.user_type}, password: {user.password})")
+                logger.info(f"- {user.name} (type: {user.user_type})")
+            
+            feedbacks = Feedback.query.all()
+            logger.info(f"Current feedback entries: {len(feedbacks)}")
+            for feedback in feedbacks:
+                logger.info(f"- Feedback ID {feedback.id} from user {feedback.user_id} (rating: {feedback.rating})")
 
     except Exception as e:
         logger.error(f"Error initializing database: {str(e)}")
